@@ -351,10 +351,32 @@
     }
     draw();
   }
-  btnLock.addEventListener('click', lockIn);
+
+  /* "lock it in" and "next color →" are two buttons sharing one slot in a
+     flex row, and [hidden] removes the outgoing one from the flow — so
+     the replacement lands under the pointer that just clicked, with the
+     same left edge. The second click of an accidental double-click (or a
+     held Enter, since lockIn() moves focus) therefore fires the NEW job:
+     it wipes the ΔE, the miss-axis sentence and the gauge before they can
+     be read — or, on the way back, locks the untouched starting mix as an
+     answer. Ignore any activation that arrives inside the guard window. */
+  var ACTION_GUARD_MS = 250;
+  var actionAt = 0;
+  function actionAllowed() {
+    var now = Date.now();
+    if (now - actionAt < ACTION_GUARD_MS) return false;
+    actionAt = now;
+    return true;
+  }
+
+  btnLock.addEventListener('click', function () {
+    if (!actionAllowed()) return;
+    lockIn();
+  });
 
   btnNext.addEventListener('click', function () {
     if (!playing || !locked) return;
+    if (!actionAllowed()) return;
     itemIdx += 1;
     nextItem();
     slH.focus();
