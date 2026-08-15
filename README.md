@@ -35,15 +35,28 @@ reveal of every round.
 
 ## Input fairness
 
-Scores are only ever compared against your own history, so the drill
-eases its tolerances for the hardware in your hand and says which one it
-eased for (the "scoring for…" chip in the HUD). A pen keeps the strict
-reference; a mouse or trackpad, which pivots at the wrist and cannot
-creep, gets roughly double the room; a finger sits between. Start and
-grab zones move the other way — a screenless tablet needs the *biggest*
-targets, because the hand is out of sight. Relative tolerances carry an
-absolute pixel floor so a phone is never held to a stricter standard
-than a desktop for the same drill.
+Nothing in this drill is a stroke, so nothing in it is eased per device.
+Reading a colour is the same judgement from a pen, a trackpad or a thumb,
+and widening the tolerance for a phone would just hand it free points for
+the one thing the drill is actually testing. The HUD's "scoring for…"
+chip is the shared SDK reporting which pointer it detected; here it
+changes no number.
+
+What hardware *can* decide is whether you are able to enter the answer
+you meant, and that is what is guaranteed instead:
+
+* three sliders on a 44px-tall hit strip, a 26px thumb, and ±1 steppers
+  either side (44×44, 40×44 under 460px) plus the arrow keys — so an
+  exact h/s/l is reachable without thumb-luck on any pointer;
+* the zero point of the score scales with the *target's* chroma
+  (`ZERO_AT 32 × (0.6 + chroma/78)`, clamped 16–50, then × `ITEM_EASE`
+  1.35/1.12/1/1/1), which is what leaves room for a coarse pointer.
+
+Measured on the shipping layout: a player who reads every target
+correctly and only ever lands within 5px of where they aimed averages
+**85/100** over a round on a 360px phone (134px hue track, 3.3° of hue per
+pixel) and **99/100** on the 860px sheet (558px track). Same drill, same
+scoring, no easing needed.
 
 ## Run it
 
