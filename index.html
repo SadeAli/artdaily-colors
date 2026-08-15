@@ -54,13 +54,17 @@
             <div class="mix-swatch" id="swTarget" role="img" aria-label="target color swatch"></div>
             <figcaption class="mix-cap">target <span class="mix-vals" id="valsTarget"></span></figcaption>
           </figure>
-          <div class="mix-gauge" aria-hidden="true"><i id="closeFill"></i></div>
+          <div class="mix-mid" aria-hidden="true">
+            <div class="mix-gauge" title="closeness gauge — fills to your score when you lock in"><i id="closeFill"></i></div>
+            <span class="mix-gauge-cap">closeness</span>
+          </div>
           <figure class="mix-cell">
             <div class="mix-swatch" id="swMix" role="img" aria-label="your mixed color swatch"></div>
             <figcaption class="mix-cap">your mix <span class="mix-vals" id="valsMix"></span></figcaption>
           </figure>
         </div>
         <p class="mix-verdict" id="verdict" role="status" aria-live="polite"></p>
+        <div class="mix-recap" id="recap" hidden></div>
         <div class="mix-sliders">
           <label class="mix-slider">
             <span class="mix-slider-name">hue</span>
@@ -89,7 +93,7 @@
       <div class="howto" id="howTo" hidden>
         <p class="howto-cmd" aria-hidden="true"><span class="prompt">$</span> man colors</p>
         <p>Drag hue, saturation and lightness until your mix melts into the target, then lock it in. No numbers until you commit — this is an eye drill.</p>
-        <p>Scored by perceptual distance (ΔE in Lab): under ~3 looks identical and scores near 100. Five colors per round; later ones go muted and meaner.</p>
+        <p>Scored by perceptual distance (ΔE in Lab): under 2 the eye can't tell them apart, and that scores a full 100. Five colors per round; later ones go muted and meaner. After the fifth, a recap lines up all five pairs.</p>
         <p>Studio tip: judge value first (squint), then temperature, then chroma — most mixes fail on lightness, not hue.</p>
       </div>
 

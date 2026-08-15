@@ -16,10 +16,18 @@
   /* ---- pure scoring math: HSL triples in, 0–100 out; no DOM ----
      Standard pipeline: hsl → sRGB → linear RGB → XYZ (D65) → Lab. */
 
-  function clamp(v, lo, hi) { return Math.min(hi, Math.max(lo, v)); }
+  /* NaN folds to the low end, never the high one — a broken number must
+     not be able to buy a good score anywhere downstream of here. */
+  function clamp(v, lo, hi) {
+    v = Number(v);
+    if (isNaN(v)) return lo;
+    return Math.min(hi, Math.max(lo, v));
+  }
 
   /* h 0–360, s/l 0–100 → [r, g, b] each 0–1, still gamma-encoded */
   function hslToRgb(h, s, l) {
+    h = Number(h);
+    if (!isFinite(h)) h = 0; /* NaN/±Infinity % 360 is NaN, which would poison the channels */
     h = ((h % 360) + 360) % 360;
     s = clamp(s, 0, 100) / 100;
     l = clamp(l, 0, 100) / 100;
@@ -75,9 +83,32 @@
     return deltaE76(hslToLab(a.h, a.s, a.l), hslToLab(b.h, b.s, b.l));
   }
 
-  /* ΔE 0 → 100, ΔE ≥ ZERO_AT → 0, linear between */
+  /* ΔE ≤ JND → 100 (a perceptually identical match IS perfect),
+     then linear down to 0 at ZERO_AT — continuous, no cliff at the JND */
+  var JND = 2; /* CIE76 just-noticeable difference ≈ 2.3; we snap at 2 */
   function itemScore(dE) {
-    return 100 * clamp(1 - dE / ZERO_AT, 0, 1);
+    return 100 * clamp(1 - (dE - JND) / (ZERO_AT - JND), 0, 1);
+  }
+
+  /* Which axis carried the miss? Lab triples ([L,a,b]) in, a small
+     report out: lightness vs chroma (saturation) vs hue, by comparing
+     |ΔL|, |ΔC| and the hue residual in the a/b plane. */
+  function missAxis(targetLab, mixLab) {
+    var dL = mixLab[0] - targetLab[0];
+    var da = mixLab[1] - targetLab[1];
+    var db = mixLab[2] - targetLab[2];
+    var cT = Math.sqrt(targetLab[1] * targetLab[1] + targetLab[2] * targetLab[2]);
+    var cM = Math.sqrt(mixLab[1] * mixLab[1] + mixLab[2] * mixLab[2]);
+    var dC = cM - cT;
+    var dH = Math.sqrt(Math.max(0, da * da + db * db - dC * dC));
+    var aL = Math.abs(dL), aC = Math.abs(dC);
+    if (aL >= aC && aL >= dH) {
+      return { axis: 'lightness', dir: dL > 0 ? 'lighter' : 'darker', amt: aL };
+    }
+    if (aC >= dH) {
+      return { axis: 'saturation', dir: dC > 0 ? 'more saturated' : 'duller', amt: aC };
+    }
+    return { axis: 'hue', dir: '', amt: dH };
   }
 
   function roundScore(scores) {
@@ -99,6 +130,7 @@
   var valsMix = document.getElementById('valsMix');
   var closeFill = document.getElementById('closeFill');
   var verdict = document.getElementById('verdict');
+  var recapEl = document.getElementById('recap');
   var slH = document.getElementById('slH');
   var slS = document.getElementById('slS');
   var slL = document.getElementById('slL');
@@ -123,6 +155,7 @@
   var target = { h: 0, s: 0, l: 0 };
   var mix = { h: START.h, s: START.s, l: START.l };
   var lastResult = null; /* { dE, score } for the currently locked item */
+  var roundItems = []; /* { target, mix, score } per locked item, for the recap */
 
   function randInt(lo, hi) { return lo + Math.floor(Math.random() * (hi - lo + 1)); }
 
@@ -147,7 +180,13 @@
     if (score >= 90) return 'dead on.';
     if (score >= 70) return 'close — squint at the pair.';
     if (score >= 40) return 'in the neighborhood.';
-    return 'way off — check the value first.';
+    return 'way off.';
+  }
+
+  /* one teaching sentence from the missAxis report */
+  function missText(m) {
+    if (m.axis === 'hue') return 'biggest miss: hue — the temperature, not the value.';
+    return 'biggest miss: ' + m.axis + ' — yours ' + m.dir + ' by ' + Math.round(m.amt) + '.';
   }
 
   /* ---- painting: swatches always, reveal gauge only when locked ---- */
@@ -186,8 +225,11 @@
     verdict.textContent = '';
     btnLock.hidden = false;
     btnNext.hidden = true;
+    /* near-neutral targets make the hue slider feel dead — say why */
     hint.textContent = 'color ' + (itemIdx + 1) + ' of ' + ITEMS_PER_ROUND +
-      ' — slide until your mix melts into the target, then lock it in.';
+      (target.s <= 15
+        ? ' — near-neutral: hue barely matters here, nail the value.'
+        : ' — slide until your mix melts into the target, then lock it in.');
     draw();
   }
 
@@ -195,9 +237,13 @@
     round += 1;
     itemIdx = 0;
     itemScores = [];
+    roundItems = [];
     playing = true;
     hudRound.textContent = String(round);
     hudScore.textContent = '–';
+    recapEl.hidden = true;
+    recapEl.innerHTML = '';
+    setRoundBtnLabel(true);
     nextItem();
   }
 
@@ -219,15 +265,20 @@
     if (!playing || locked) return;
     readSliders();
     locked = true;
-    var dE = hslDeltaE(target, mix);
+    var tLab = hslToLab(target.h, target.s, target.l);
+    var mLab = hslToLab(mix.h, mix.s, mix.l);
+    var dE = deltaE76(tLab, mLab);
     var score = itemScore(dE);
     itemScores.push(score);
+    roundItems.push({ target: target, mix: mix, score: score });
     lastResult = { dE: dE, score: score };
     setSlidersDisabled(true);
-    /* the reveal: both triples, the miss distance, the gauge */
+    /* the reveal: both triples, the miss distance, which axis missed, the gauge */
     valsTarget.textContent = tripleText(target);
     valsMix.textContent = tripleText(mix);
-    verdict.textContent = 'ΔE ' + Math.round(dE) + ' · ' + Math.round(score) + '/100 — ' + phrase(score);
+    var vt = 'ΔE ' + Math.round(dE) + ' · ' + Math.round(score) + '/100 — ' + phrase(score);
+    if (dE > JND) vt += ' ' + missText(missAxis(tLab, mLab));
+    verdict.textContent = vt;
     btnLock.hidden = true;
     if (itemIdx + 1 < ITEMS_PER_ROUND) {
       btnNext.hidden = false;
@@ -254,7 +305,44 @@
     hudScore.textContent = String(res.score);
     hudBest.textContent = res.best === null ? '–' : String(res.best);
     hint.textContent = 'round done — “new round” mixes five fresh colors.';
+    renderRecap();
+    setRoundBtnLabel(false);
     showToast((res.isNewBest ? 'new best! ' : 'round score ') + res.score + ' / 100', res.isNewBest);
+  }
+
+  /* round-end recap: the five target-over-mix pairs, side by side */
+  function renderRecap() {
+    recapEl.innerHTML = '';
+    var t = document.createElement('p');
+    t.className = 'mix-recap-title';
+    t.textContent = 'recap — target on top, your mix underneath';
+    recapEl.appendChild(t);
+    for (var i = 0; i < roundItems.length; i++) {
+      var it = roundItems[i];
+      var cell = document.createElement('div');
+      cell.className = 'mix-recap-item';
+      var pair = document.createElement('div');
+      pair.className = 'mix-recap-pair';
+      pair.title = 'target ' + tripleText(it.target).slice(2) + ' / mix ' + tripleText(it.mix).slice(2);
+      var a = document.createElement('i');
+      a.style.background = cssColor(it.target);
+      var b = document.createElement('i');
+      b.style.background = cssColor(it.mix);
+      pair.appendChild(a);
+      pair.appendChild(b);
+      var sc = document.createElement('span');
+      sc.className = 'mix-recap-score';
+      sc.textContent = String(Math.round(it.score));
+      cell.appendChild(pair);
+      cell.appendChild(sc);
+      recapEl.appendChild(cell);
+    }
+    recapEl.hidden = false;
+  }
+
+  /* mid-round the button is a restart (it discards the round) — say so */
+  function setRoundBtnLabel(inProgress) {
+    btnRound.innerHTML = (inProgress ? 'restart round ' : 'new round ') + '<span aria-hidden="true">↻</span>';
   }
 
   var toastTimer = null;
