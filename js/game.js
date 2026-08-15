@@ -201,6 +201,11 @@
 
   function cssColor(c) { return 'hsl(' + c.h + ', ' + c.s + '%, ' + c.l + '%)'; }
   function tripleText(c) { return '· h ' + c.h + ' s ' + c.s + ' l ' + c.l; }
+  /* the same three numbers, spelled out — "h 210 s 40 l 55" is read as
+     "h two hundred and ten s forty l fifty-five", which is not English */
+  function spokenTriple(c) {
+    return 'hue ' + c.h + ', saturation ' + c.s + ', lightness ' + c.l;
+  }
 
   function gradeColor(score, c) {
     return score >= 80 ? c.good : score >= 50 ? c.mid : c.bad;
@@ -407,6 +412,14 @@
       var pair = document.createElement('div');
       pair.className = 'mix-recap-pair';
       pair.title = 'target ' + tripleText(it.target).slice(2) + ' / mix ' + tripleText(it.mix).slice(2);
+      /* A `title` is a mouse-only affordance — no keyboard reaches it and
+         screen readers treat it as optional. Without a real name the recap
+         read out as five bare numbers with nothing to attach them to, so
+         the one panel meant for STUDYING the round was the least legible
+         part of it. Name each pair properly. */
+      pair.setAttribute('role', 'img');
+      pair.setAttribute('aria-label', 'color ' + (i + 1) + ' — target ' + spokenTriple(it.target) +
+        '; your mix ' + spokenTriple(it.mix));
       var a = document.createElement('i');
       a.style.background = cssColor(it.target);
       var b = document.createElement('i');
@@ -430,12 +443,17 @@
 
   var toastTimer = null;
   function showToast(msg, celebrate) {
+    /* Unhide BEFORE filling. A live region that is mutated while it is
+       still `hidden` is mutated inside a subtree the accessibility tree
+       does not carry, and un-hiding it afterwards is not itself a content
+       change — so the round score announced to nobody. Show it first,
+       then write into it, and the announcement actually happens. */
+    toast.hidden = false;
     toast.innerHTML = '';
     var s = document.createElement('span');
     s.className = celebrate ? 'toast-accent' : '';
     s.textContent = msg;
     toast.appendChild(s);
-    toast.hidden = false;
     clearTimeout(toastTimer);
     toastTimer = setTimeout(function () { toast.hidden = true; }, 2200);
   }
