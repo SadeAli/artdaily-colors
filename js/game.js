@@ -11,7 +11,11 @@
   var SLUG = 'colors';
   var ITEMS_PER_ROUND = 5;
   var START = { h: 180, s: 50, l: 50 }; /* every item starts mid-teal */
-  var ZERO_AT = 32; /* ΔE where the score hits 0 — "plainly a different color" */
+  var ZERO_AT = 32; /* ΔE where the score hits 0 on a mid-chroma target */
+  /* Item 1 is the first number a beginner ever sees, so it is dealt with
+     room: the same eye error reads higher on the warm-up than it will on
+     item 5. Nothing here touches a perfect match, which is always 100. */
+  var ITEM_EASE = [1.35, 1.12, 1.0, 1.0, 1.0];
 
   /* ---- pure scoring math: HSL triples in, 0–100 out; no DOM ----
      Standard pipeline: hsl → sRGB → linear RGB → XYZ (D65) → Lab. */
@@ -83,11 +87,33 @@
     return deltaE76(hslToLab(a.h, a.s, a.l), hslToLab(b.h, b.s, b.l));
   }
 
+  /* The SAME slider slop lands a wildly different ΔE depending on the
+     target: hue error is multiplied by the target's chroma, so 10° off a
+     vivid orange is a ΔE near 18 while 10° off a near-grey is barely 1.
+     Judging every target against one fixed zero point therefore made the
+     vivid items several times harder to score — and the vivid ones came
+     first, so the first number a beginner ever saw was the worst of their
+     round. Scale the zero point with the target's own chroma instead:
+     "10° of hue off" now costs about the same on every item, and the ramp
+     that remains is the real one (a near-neutral is genuinely harder to
+     READ, which is what the drill is for). */
+  function chromaOf(lab) {
+    return Math.sqrt(lab[1] * lab[1] + lab[2] * lab[2]);
+  }
+
+  function zeroAtFor(targetLab, ease) {
+    var z = ZERO_AT * (0.6 + chromaOf(targetLab) / 78);
+    var e = (typeof ease === 'number' && isFinite(ease)) ? ease : 1;
+    return clamp(z, 16, 50) * e;
+  }
+
   /* ΔE ≤ JND → 100 (a perceptually identical match IS perfect),
-     then linear down to 0 at ZERO_AT — continuous, no cliff at the JND */
+     then linear down to 0 at zeroAt — continuous, no cliff at the JND */
   var JND = 2; /* CIE76 just-noticeable difference ≈ 2.3; we snap at 2 */
-  function itemScore(dE) {
-    return 100 * clamp(1 - (dE - JND) / (ZERO_AT - JND), 0, 1);
+  function itemScore(dE, zeroAt) {
+    var z = (typeof zeroAt === 'number' && isFinite(zeroAt)) ? zeroAt : ZERO_AT;
+    if (z <= JND + 1) z = JND + 1; /* a degenerate window can never divide by ~0 */
+    return 100 * clamp(1 - (dE - JND) / (z - JND), 0, 1);
   }
 
   /* Which axis carried the miss? Lab triples ([L,a,b]) in, a small
@@ -134,6 +160,7 @@
   var slH = document.getElementById('slH');
   var slS = document.getElementById('slS');
   var slL = document.getElementById('slL');
+  var nudgeEls = document.querySelectorAll('.mix-nudge');
   var btnLock = document.getElementById('btnLock');
   var btnNext = document.getElementById('btnNext');
   var btnRound = document.getElementById('btnRound');
@@ -159,11 +186,14 @@
 
   function randInt(lo, hi) { return lo + Math.floor(Math.random() * (hi - lo + 1)); }
 
-  /* ramp: vivid mid-range first, then muted, ending near-neutral —
-     desaturated targets are far harder to judge by eye */
+  /* ramp: an easy, plainly-coloured warm-up, then vivid, then muted,
+     ending near-neutral — desaturated targets are far harder to judge by
+     eye, and with the chroma-scaled zero point that is now the only
+     difficulty ramp left (it used to run backwards). */
   function makeTarget(idx) {
     var h = randInt(0, 359);
-    if (idx < 2) return { h: h, s: randInt(55, 90), l: randInt(40, 65) };
+    if (idx === 0) return { h: h, s: randInt(50, 70), l: randInt(45, 60) };
+    if (idx === 1) return { h: h, s: randInt(55, 90), l: randInt(40, 65) };
     if (idx === 2) return { h: h, s: randInt(25, 55), l: randInt(30, 72) };
     if (idx === 3) return { h: h, s: randInt(10, 30), l: randInt(25, 76) };
     return { h: h, s: randInt(3, 15), l: randInt(20, 80) };
@@ -178,15 +208,22 @@
 
   function phrase(score) {
     if (score >= 90) return 'dead on.';
-    if (score >= 70) return 'close — squint at the pair.';
+    if (score >= 70) return 'close — half-shut your eyes and compare the pair.';
     if (score >= 40) return 'in the neighborhood.';
-    return 'way off.';
+    return 'not there yet — fix how light it is first, then the color.';
   }
 
-  /* one teaching sentence from the missAxis report */
+  /* one teaching sentence from the missAxis report, in words a beginner
+     already owns — "hue", "chroma" and "value" are the words this drill
+     is teaching, so they are said the long way round the first time */
   function missText(m) {
-    if (m.axis === 'hue') return 'biggest miss: hue — the temperature, not the value.';
-    return 'biggest miss: ' + m.axis + ' — yours ' + m.dir + ' by ' + Math.round(m.amt) + '.';
+    if (m.axis === 'hue') {
+      return 'biggest miss: the color itself (red vs orange), not how light it is.';
+    }
+    if (m.axis === 'lightness') {
+      return 'biggest miss: how light it is — yours ' + m.dir + ' by ' + Math.round(m.amt) + '.';
+    }
+    return 'biggest miss: how strong the color is — yours ' + m.dir + ' by ' + Math.round(m.amt) + '.';
   }
 
   /* ---- painting: swatches always, reveal gauge only when locked ---- */
@@ -209,6 +246,7 @@
     slH.disabled = off;
     slS.disabled = off;
     slL.disabled = off;
+    for (var i = 0; i < nudgeEls.length; i++) nudgeEls[i].disabled = off;
   }
 
   function nextItem() {
@@ -228,8 +266,9 @@
     /* near-neutral targets make the hue slider feel dead — say why */
     hint.textContent = 'color ' + (itemIdx + 1) + ' of ' + ITEMS_PER_ROUND +
       (target.s <= 15
-        ? ' — near-neutral: hue barely matters here, nail the value.'
-        : ' — slide until your mix melts into the target, then lock it in.');
+        ? ' — nearly grey: the color slider barely bites here, so nail how light it is.'
+        : ' — slide until your mix melts into the target, then lock it in.') +
+      (itemIdx === 0 ? ' the ± buttons (and the arrow keys) step by exactly 1.' : '');
     draw();
   }
 
@@ -261,6 +300,23 @@
   slS.addEventListener('input', onSlide);
   slL.addEventListener('input', onSlide);
 
+  /* ±1 steppers — a trackpad thumb-drag cannot reliably land an exact
+     value, and until now the only precise path (arrow keys on a focused
+     slider) was mentioned nowhere. 44×44 targets, so a finger works too. */
+  function onNudge(ev) {
+    if (!playing || locked) return;
+    var k = ev.currentTarget.dataset.k;
+    var d = parseInt(ev.currentTarget.dataset.d, 10) || 0;
+    var el = k === 'h' ? slH : (k === 's' ? slS : slL);
+    var lo = Number(el.min), hi = Number(el.max);
+    var v = Number(el.value) + d;
+    el.value = String(Math.min(hi, Math.max(lo, v)));
+    onSlide();
+  }
+  for (var nIdx = 0; nIdx < nudgeEls.length; nIdx++) {
+    nudgeEls[nIdx].addEventListener('click', onNudge);
+  }
+
   function lockIn() {
     if (!playing || locked) return;
     readSliders();
@@ -268,7 +324,7 @@
     var tLab = hslToLab(target.h, target.s, target.l);
     var mLab = hslToLab(mix.h, mix.s, mix.l);
     var dE = deltaE76(tLab, mLab);
-    var score = itemScore(dE);
+    var score = itemScore(dE, zeroAtFor(tLab, ITEM_EASE[itemIdx]));
     itemScores.push(score);
     roundItems.push({ target: target, mix: mix, score: score });
     lastResult = { dE: dE, score: score };
@@ -276,8 +332,13 @@
     /* the reveal: both triples, the miss distance, which axis missed, the gauge */
     valsTarget.textContent = tripleText(target);
     valsMix.textContent = tripleText(mix);
-    var vt = 'ΔE ' + Math.round(dE) + ' · ' + Math.round(score) + '/100 — ' + phrase(score);
+    /* plain English first, the number second — the sentence a beginner
+       can act on must not be gated behind a symbol they have to look up */
+    var vt = Math.round(score) + '/100 — ' + phrase(score);
     if (dE > JND) vt += ' ' + missText(missAxis(tLab, mLab));
+    vt += ' (ΔE ' + Math.round(dE) + (itemIdx === 0
+      ? ' — that is how far apart your eye reads the two; under 2 is invisible.)'
+      : ')');
     verdict.textContent = vt;
     btnLock.hidden = true;
     if (itemIdx + 1 < ITEMS_PER_ROUND) {
