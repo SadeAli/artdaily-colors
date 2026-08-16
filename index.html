@@ -53,7 +53,10 @@
         <div class="mix-pair">
           <figure class="mix-cell">
             <div class="mix-swatch" id="swTarget" role="img" aria-label="target color swatch"></div>
-            <figcaption class="mix-cap">target <span class="mix-vals" id="valsTarget"></span></figcaption>
+            <!-- the terse triple is a note for the eye ("· h 210 s 40 l 55");
+                 the same three numbers go into the swatch's own label in
+                 English, so this copy is hidden rather than read twice -->
+            <figcaption class="mix-cap">target <span class="mix-vals" id="valsTarget" aria-hidden="true"></span></figcaption>
           </figure>
           <div class="mix-mid" aria-hidden="true">
             <div class="mix-gauge" title="closeness gauge — fills to your score when you lock in"><i id="closeFill"></i></div>
@@ -61,7 +64,7 @@
           </div>
           <figure class="mix-cell">
             <div class="mix-swatch" id="swMix" role="img" aria-label="your mixed color swatch"></div>
-            <figcaption class="mix-cap">your mix <span class="mix-vals" id="valsMix"></span></figcaption>
+            <figcaption class="mix-cap">your mix <span class="mix-vals" id="valsMix" aria-hidden="true"></span></figcaption>
           </figure>
         </div>
         <p class="mix-verdict" id="verdict" role="status" aria-live="polite"></p>

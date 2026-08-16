@@ -207,6 +207,26 @@
     return 'hue ' + c.h + ', saturation ' + c.s + ', lightness ' + c.l;
   }
 
+  /* THE REVEAL IS THE DRILL'S PAYLOAD AND IT WAS ONLY SAID ONE WAY.
+     The two swatches are role="img" elements whose labels never changed
+     — "target color swatch", start to finish — so the numbers the
+     player is meant to study arrived only as the caption's shorthand,
+     "· h 210 s 40 l 55", which is not a sentence in any language. The
+     recap already knew better and spelled its pairs out with
+     spokenTriple(); the main reveal, which is what a player reads
+     first, did not. Say it there too, in the same words, and let the
+     caption stay the terse note for the eye it was drawn as.
+     Passing null puts the pre-lock labels back — nothing is revealed
+     until the item is locked, for anyone. */
+  function setSwatchLabels(res) {
+    swTarget.setAttribute('aria-label', res
+      ? 'target color swatch — ' + spokenTriple(res.target)
+      : 'target color swatch');
+    swMix.setAttribute('aria-label', res
+      ? 'your mixed color swatch — ' + spokenTriple(res.mix)
+      : 'your mixed color swatch');
+  }
+
   function gradeColor(score, c) {
     return score >= 80 ? c.good : score >= 50 ? c.mid : c.bad;
   }
@@ -265,6 +285,7 @@
     setSlidersDisabled(false);
     valsTarget.textContent = '';
     valsMix.textContent = '';
+    setSwatchLabels(null);
     verdict.textContent = '';
     btnLock.hidden = false;
     btnNext.hidden = true;
@@ -394,6 +415,7 @@
     /* the reveal: both triples, the miss distance, which axis missed, the gauge */
     valsTarget.textContent = tripleText(target);
     valsMix.textContent = tripleText(mix);
+    setSwatchLabels({ target: target, mix: mix });
     /* plain English first, the number second — the sentence a beginner
        can act on must not be gated behind a symbol they have to look up */
     var vt = Math.round(score) + '/100 — ' + phrase(score);
@@ -475,8 +497,11 @@
          the one panel meant for STUDYING the round was the least legible
          part of it. Name each pair properly. */
       pair.setAttribute('role', 'img');
+      /* the score chip beside it is a bare numeral — read on its own it
+         is just "87" with nothing to attach it to, so it rides in here
+         and the visible copy stays a mark for the eye */
       pair.setAttribute('aria-label', 'color ' + (i + 1) + ' — target ' + spokenTriple(it.target) +
-        '; your mix ' + spokenTriple(it.mix));
+        '; your mix ' + spokenTriple(it.mix) + '; scored ' + Math.round(it.score) + ' out of 100');
       var a = document.createElement('i');
       a.style.background = cssColor(it.target);
       var b = document.createElement('i');
@@ -485,6 +510,7 @@
       pair.appendChild(b);
       var sc = document.createElement('span');
       sc.className = 'mix-recap-score';
+      sc.setAttribute('aria-hidden', 'true'); /* said in the pair's label, in words */
       sc.textContent = String(Math.round(it.score));
       cell.appendChild(pair);
       cell.appendChild(sc);
