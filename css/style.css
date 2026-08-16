@@ -672,7 +672,27 @@ button, .btn {
 .mix-nudge:hover:not(:disabled) { background: color-mix(in srgb, var(--game-accent) 18%, var(--card)); }
 .mix-nudge:disabled { opacity: 0.45; cursor: default; }
 
+/* ---- narrow sheets: the slider's name gets its own line ----
+   The name, both steppers and the track used to share one row, and the
+   only way to fit them was to shave the steppers to 40px — under the
+   44px floor the rest of this sheet keeps, on the one pointer that has
+   nothing else (a finger has no arrow keys, so the ± buttons ARE its
+   precision path). It cost resolution too: 5.6em of name + two buttons
+   left 108px of travel for 360 DEGREES of hue at a 360px viewport —
+   3.3° per pixel, and 5.3°/px at 320px.
+   Lifting the name onto its own row pays for both at once: the steppers
+   go back to 44×44 and the track widens to 204px (178px of travel,
+   2.0°/px at 360px, 2.6°/px at 320px). Same fix, same reason, as
+   mix-to-target's .mix-row. */
 @media (max-width: 460px) {
-  .mix-slider { grid-template-columns: 5.6em 40px minmax(0, 1fr) 40px; gap: 6px; }
-  .mix-nudge { width: 40px; }
+  .mix-slider {
+    grid-template-columns: 44px minmax(0, 1fr) 44px;
+    gap: 6px;
+    row-gap: 2px;
+  }
+  .mix-slider-name { grid-column: 1 / -1; }
+  /* the gloss rides beside the name instead of under it, so the extra
+     row costs one line of height, not two */
+  .mix-slider-gloss { display: inline; }
+  .mix-slider-gloss::before { content: "· "; }
 }
